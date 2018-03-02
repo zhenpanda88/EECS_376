@@ -1,12 +1,17 @@
+//my_path_server
+
 #include <ros/ros.h>
 #include <actionlib/server/simple_action_server.h>
 #include <my_path_server/pathAction.h>
 #include <nav_msgs/Path.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/Twist.h>
+#include <std_msgs/Bool.h>
 #include <iostream>
 #include <string>
 #include <math.h>
+#include <cmath>
+using namespace std;
 
 //some tunable constants, global
 const double g_move_speed = 1.0; // set forward speed to this value, e.g. 1m/s
@@ -18,15 +23,18 @@ const double g_dist_tol = 0.01; // 1cm
 geometry_msgs::Twist g_twist_cmd;
 ros::Publisher g_twist_commander; 
 geometry_msgs::Pose g_current_pose;
+const double pi = 3.1415;
 
 class MyPathServer {
 private:
 	ros::NodeHandle nh_;
 	actionlib::SimpleActionServer<my_path_server::pathAction> as_;
-	my_path_server::pathGoal goal_;
+	
+    my_path_server::pathGoal goal_;
 	my_path_server::pathResult result_;
 	my_path_server::pathFeedback feedback_;
-	double sgn(double x);
+	
+    double sgn(double x);
 	double min_spin(double spin_angle);
 	double convertPlanarQuat2Phi(geometry_msgs::Quaternion quaternion);
 	geometry_msgs::Quaternion convertPlanarPhi2Quaternion(double phi);
@@ -44,32 +52,13 @@ public:
 
 	void executeCB(const actionlib::SimpleActionServer<my_path_server::pathAction>::GoalConstPtr& goal);
 
-}
+};
 
 MyPathServer::MyPathServer() :
 	as_(nh_, "path_server", boost::bind(&MyPathServer::executeCB, this, _1),false)
 	{
 		ROS_INFO("in constructor of myPathServer...");
 		as_.start();
-
-		  //initialize components of the twist command global variable
-	    g_twist_cmd.linear.x=0.0;
-	    g_twist_cmd.linear.y=0.0;    
-	    g_twist_cmd.linear.z=0.0;
-	    g_twist_cmd.angular.x=0.0;
-	    g_twist_cmd.angular.y=0.0;
-	    g_twist_cmd.angular.z=0.0;  
-	    
-	    //define initial position to be 0
-	    g_current_pose.position.x = 0.0;
-	    g_current_pose.position.y = 0.0;
-	    g_current_pose.position.z = 0.0;
-	    
-	    // define initial heading to be "0"
-	    g_current_pose.orientation.x = 0.0;
-	    g_current_pose.orientation.y = 0.0;
-	    g_current_pose.orientation.z = 0.0;
-	    g_current_pose.orientation.w = 1.0;
 	}
 
 //signum function: strip off and return the sign of the argument
@@ -174,52 +163,43 @@ void MyPathServer::get_yaw_and_dist(geometry_msgs::Pose current_pose, geometry_m
 
 void MyPathServer::executeCB(const actionlib::SimpleActionServer<my_path_server::pathAction>::GoalConstPtr& goal){
 ROS_INFO("callback activated");
-    double yaw_desired, yaw_current, travel_distance, spin_angle;
-    geometry_msgs::Pose pose_desired;
-    int npts = goal.nav_path.poses.size();
-    ROS_INFO("received path goals with %d poses",npts);    
+    double theta_current = 0.0;//to track current orientation
     
-    for (int i=0;i<npts;i++) { //visit each subgoal
-        // odd notation: drill down, access vector element, drill some more to get pose
-        pose_desired = goal.nav_path.poses[i].pose; //get next pose from vector of poses
-        
-        //WRITE THIS FNC: compute desired heading and travel distance based on current and desired poses
-        get_yaw_and_dist(g_current_pose, pose_desired,travel_distance, yaw_desired);
-        ROS_INFO("pose %d: desired yaw = %f; desired (x,y) = (%f,%f)",i,yaw_desired, pose_desired.position.x,pose_desired.position.y); 
-        //ROS_INFO("current (x,y) = (%f, %f)",g_current_pose.position.x,g_current_pose.position.y);
-        //ROS_INFO("travel distance = %f",travel_distance);         
-        
-        
-        // a quaternion is overkill for navigation in a plane; really only need a heading angle
-        // this yaw is measured CCW from x-axis
-        // GET RID OF NEXT LINE AFTER FIXING get_yaw_and_dist()
-        //yaw_desired = convertPlanarQuat2Phi(pose_desired.orientation); //from i'th desired pose
-        
-        ROS_INFO("pose %d: desired yaw = %f",i,yaw_desired);        
-        yaw_current = convertPlanarQuat2Phi(g_current_pose.orientation); //our current yaw--should use a sensor
-        spin_angle = yaw_desired - yaw_current; // spin this much
-        spin_angle = min_spin(spin_angle);// but what if this angle is > pi?  then go the other way
-        do_spin(spin_angle); // carry out this incremental action
-        // we will just assume that this action was successful--really should have sensor feedback here
-        g_current_pose.orientation = pose_desired.orientation; // assumes got to desired orientation precisely
-        
-        //FIX THE NEXT LINE, BASED ON get_yaw_and_dist()
-        do_move(travel_distance);  
-      }
+    int npts = goal->x_values.size();//get number of poses to be visited
+    double dist = 0.0;
+    double delta_theta = 0.0;
 
-  return true;
+    for(int i=0;i<npts;i++){
+        dist = sqrt(pow(goal->x_values[i],2.0)+pow(goal->y_values[i],2.0));//calculate the next move distance
+        delta_theta = (goal->phi_values[i]) - theta_current;//calculate change in angle
+        do_spin(delta_theta);//assume correct angle
+        theta_current = goal->phi_values[i];//update current joint angle
+        do_move(dist);//command the move
+        if (as_.isPreemptRequested()){  
+            ROS_WARN("goal cancelled!");
+            result_.goal_reached = false;
+            as_.setAborted(result_); // tell the client we have given up on this goal; send the result message as well
+            return; // done with callback
+        }
+    }
+
+    result_.goal_reached = true;
+    as_.setSucceeded(result_);
 }
 
 int main(int argc, char** argv){
 	ros::init(argc,argv, "my_path_server");
-	
+	ros::NodeHandle nh;
+
 	ROS_INFO("instantianting the Path Server: ");
+
+    g_twist_commander = nh.advertise<geometry_msgs::Twist>("/robot0/cmd_vel", 1);
 
 	MyPathServer as_object;
 
 	ROS_INFO("going into spin");
 
-	while(ros::ok()){
-		ros::spinOnce();
-	}
+	ros::spin();
+	
+    return 0;
 }

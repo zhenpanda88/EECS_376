@@ -6,9 +6,9 @@
 #include <std_msgs/Bool.h> // boolean message 
 
 
-const double MIN_SAFE_DISTANCE_FRONT = 1.0; // set alarm if anything is within 0.5m of the front of robot
-const double MIN_SAFE_DISTANCE_LEFT = 0.6;
-const double MIN_SAFE_DISTANCE_RIGHT = 0.6;
+const double MIN_SAFE_DISTANCE_FRONT = 0.5; // set alarm if anything is within 0.5m of the front of robot
+const double MIN_SAFE_DISTANCE_LEFT = 0.2;
+const double MIN_SAFE_DISTANCE_RIGHT = 0.2;
 const double MIN_SAFE_DISTANCE_RIGHT_45 = 0.75;
 const double MIN_SAFE_DISTANCE_RIGHT_30 = 0.8;
 const double MIN_SAFE_DISTANCE_LEFT_45 = 0.75;

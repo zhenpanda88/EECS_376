@@ -1,5 +1,10 @@
-nav_msgs/Path nav_path
+#goals
+float64[] x_values
+float64[] y_values
+float64[] phi_values
 ---
-nav_msgs/Path nav_path
+#results
+bool goal_reached
 ---
+#feedback
 int32 fdbk

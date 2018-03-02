@@ -33,6 +33,7 @@ catkin_simple()
 # may add more of these lines for more nodes from the same package
 # cs_add_executable(example src/example.cpp)
 cs_add_executable(my_path_server src/my_path_server.cpp)
+cs_add_executable(my_path_action_client src/my_path_action_client.cpp)
 #the following is required, if desire to link a node in this package with a library created in this same package
 # edit the arguments to reference the named node and named library within this package
 # target_link_library(example my_lib)
